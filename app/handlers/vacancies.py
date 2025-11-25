@@ -9,9 +9,9 @@ from sqlalchemy import select
 
 from app.db.session import get_session
 from app.db.models import User, Vacancy, UserVacancy, SearchFilter
-from app.db.crud import get_unsent_vacancies_for_user
+from app.db.crud import get_unsent_vacancies_for_user, mark_vacancies_as_sent
 from app.services.llm_service import generate_adapted_resume, generate_cover_letter
-from app.services.hh_service import fetch_vacancies_for_user  # ⬅ добавили
+from app.services.hh_service import fetch_vacancies_for_user
 
 router = Router()
 
@@ -77,10 +77,17 @@ async def cmd_vacancies(message: Message):
         return
 
     for v in vacancies:
+        salary_text = "не указана"
+        if v.salary_from or v.salary_to:
+            _from = v.salary_from or ""
+            _to = v.salary_to or ""
+            cur = v.currency or ""
+            salary_text = f"{_from}–{_to} {cur}".strip("– ")
+
         text = (
             f"<b>{v.title}</b>\n"
             f"{v.company} — {v.city}\n"
-            f"Зарплата: {v.salary_from}–{v.salary_to} {v.currency}\n"
+            f"Зарплата: {salary_text}\n"
             f"<a href='{v.url}'>Ссылка на hh.ru</a>"
         )
         await message.answer(
@@ -88,6 +95,10 @@ async def cmd_vacancies(message: Message):
             reply_markup=vacancy_keyboard(v.id),
             disable_web_page_preview=True,
         )
+
+    # помечаем эти вакансии как отправленные
+    async for session in get_session():
+        await mark_vacancies_as_sent(session, user, list(vacancies))
 
 
 @router.callback_query(F.data.startswith("gen_resume:"))

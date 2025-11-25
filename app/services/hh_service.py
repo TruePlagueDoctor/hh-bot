@@ -127,9 +127,14 @@ async def fetch_vacancies_for_user(
     items = data.get("items", [])
     logger.info("HH returned %d items", len(items))
 
+    # 👉 Дополнительно фильтруем по названию, если указана позиция
+    if filt.position:
+        p = filt.position.strip().lower()
+        items = [item for item in items if p in (item.get("name") or "").lower()]
+        logger.info("Filtered items by position '%s': %d left", p, len(items))
+
     new_vacancies: list[Vacancy] = []
 
-    # уже сохранённые вакансии по hh_id
     existing_stmt = select(Vacancy).where(
         Vacancy.hh_id.in_([item["id"] for item in items])
     )
@@ -155,7 +160,6 @@ async def fetch_vacancies_for_user(
             await session.flush()
             new_vacancies.append(vac)
 
-        # связь user-vacancy, чтобы не дублировать
         uv_stmt = select(UserVacancy).where(
             UserVacancy.user_id == user.id,
             UserVacancy.vacancy_id == vac.id,
