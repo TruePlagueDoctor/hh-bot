@@ -12,6 +12,7 @@ from app.handlers.search_settings import register_search_settings_handlers
 from app.handlers.vacancies import register_vacancy_handlers
 from app.services.scheduler import setup_scheduler
 from app.handlers.resume import register_resume_handlers
+from app.handlers.history import register_history_handlers
 
 
 logging.basicConfig(
@@ -39,6 +40,7 @@ async def main():
     register_search_settings_handlers(dp)
     register_vacancy_handlers(dp)
     register_resume_handlers(dp)
+    register_history_handlers(dp)
     # Планировщик рассылки
     scheduler = setup_scheduler(bot)
     scheduler.start()

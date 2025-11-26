@@ -10,9 +10,11 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from sqlalchemy import delete
+
 from app.db.session import get_session
 from app.db.crud import get_or_create_user, upsert_search_filters
-from app.db.models import CompanySize
+from app.db.models import CompanySize, UserVacancy, VacancyStatus
 
 router = Router()
 
@@ -33,7 +35,7 @@ class SearchSettingsStates(StatesGroup):
 # === Старт настройки ===
 
 
-@router.message(F.text == "/search_settings")
+@router.message(F.text.in_({"/search_settings", "🔍 Настроить поиск"}))
 async def cmd_search_settings(message: Message, state: FSMContext):
     await state.set_state(SearchSettingsStates.position)
     await message.answer("Какую должность ищем?")
@@ -74,14 +76,20 @@ async def set_min_salary(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("Нужно неотрицательное число. Попробуй ещё раз.")
         return
-
     await state.update_data(min_salary=min_salary if min_salary > 0 else None)
     await state.set_state(SearchSettingsStates.metro)
+
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="Пропустить")]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
     await message.answer(
         "Около каких станций метро искать вакансии?\n\n"
         "Перечисли через запятую (например: «Таганская, Китай-город»)\n"
-        "или напиши «пропустить», если метро не важно."
+        "или нажми «Пропустить», если метро не важно.",
+        reply_markup=kb,
     )
 
 
@@ -118,12 +126,23 @@ async def set_freshness(message: Message, state: FSMContext):
         if freshness not in (1, 2, 3):
             raise ValueError
     except ValueError:
-        await message.answer("Нужно число 1, 2 или 3.")
+        kb = ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="1"),
+                    KeyboardButton(text="2"),
+                    KeyboardButton(text="3"),
+                ]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        )
+        await message.answer("Нужно число 1, 2 или 3.", reply_markup=kb)
         return
 
     await state.update_data(freshness_days=freshness)
 
-    # Клавиатура для типа занятости
+    # дальше как у тебя — клавиатура для типа занятости
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Полная занятость")],
@@ -369,6 +388,9 @@ async def set_top_companies(message: Message, state: FSMContext):
             company_size=data.get("company_size"),
             only_top_companies=data.get("only_top_companies", False),
         )
+
+        await session.execute(delete(UserVacancy).where(UserVacancy.user_id == user.id))
+        await session.commit()
 
     await message.answer(
         "Фильтры поиска сохранены ✅\nМожешь проверить вакансии командой /vacancies",

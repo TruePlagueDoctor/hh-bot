@@ -6,6 +6,8 @@ from aiogram.types import Message
 
 from app.db.session import get_session
 from app.db.crud import get_or_create_user, update_user_profile
+from aiogram.filters import CommandStart, StateFilter
+from app.utils.keyboards import main_menu_keyboard
 
 router = Router()
 
@@ -20,14 +22,25 @@ async def cmd_start(message: Message):
         "Давай заполним базовый профиль.\n"
         "Отправь мне сообщение в формате:\n\n"
         "<b>ФИО</b>\nГород\nЖелаемая должность\nНавыки через запятую\n\n"
-        "Или просто напиши /skip, чтобы пропустить."
+        "Или просто напиши /skip, чтобы пропустить.\n\n"
+        "Также можешь пользоваться кнопками внизу 👇",
+        reply_markup=main_menu_keyboard(),
     )
 
 
 # ⬇️ ВАЖНО: добавили StateFilter(None)
 @router.message(
-    StateFilter(None),  # только если нет активного состояния FSM
-    F.text & ~F.text.startswith("/"),
+    StateFilter(None),
+    F.text
+    & ~F.text.startswith("/")
+    & F.text.not_in(
+        {
+            "🔍 Настроить поиск",
+            "📨 Вакансии",
+            "📄 Моё резюме",
+            "📜 История",
+        }
+    ),
 )
 async def handle_profile_text(message: Message):
     text = message.text or ""

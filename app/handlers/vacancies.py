@@ -4,6 +4,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
+    BufferedInputFile,
 )
 from sqlalchemy import select
 
@@ -12,6 +13,7 @@ from app.db.models import User, Vacancy, UserVacancy, SearchFilter
 from app.db.crud import get_unsent_vacancies_for_user, mark_vacancies_as_sent
 from app.services.llm_service import generate_adapted_resume, generate_cover_letter
 from app.services.hh_service import fetch_vacancies_for_user
+from app.utils.pdf_utils import render_text_to_pdf
 
 router = Router()
 
@@ -41,7 +43,7 @@ def vacancy_keyboard(vacancy_id: int) -> InlineKeyboardMarkup:
     )
 
 
-@router.message(F.text == "/vacancies")
+@router.message(F.text.in_({"/vacancies", "📨 Вакансии"}))
 async def cmd_vacancies(message: Message):
     async for session in get_session():
         # 1) находим пользователя
@@ -114,7 +116,21 @@ async def cb_gen_resume(callback: CallbackQuery):
 
         doc = await generate_adapted_resume(session, user, vacancy)
 
+    # 1) Отправляем текст как раньше
     await callback.message.answer("Готовое резюме:\n\n" + doc.content)
+
+    # 2) Формируем PDF
+    pdf_bytes = render_text_to_pdf(
+        doc.content, title=vacancy.title if vacancy else "Резюме"
+    )
+    input_file = BufferedInputFile(pdf_bytes, filename="resume.pdf")
+
+    # 3) Отправляем PDF как документ
+    await callback.message.answer_document(
+        input_file,
+        caption="Резюме в формате PDF",
+    )
+
     await callback.answer()
 
 
@@ -131,7 +147,20 @@ async def cb_gen_cover(callback: CallbackQuery):
 
         doc = await generate_cover_letter(session, user, vacancy)
 
+    # 1) Текст
     await callback.message.answer("Сопроводительное письмо:\n\n" + doc.content)
+
+    # 2) PDF
+    pdf_bytes = render_text_to_pdf(
+        doc.content, title=f"Сопроводительное: {vacancy.title if vacancy else ''}"
+    )
+    input_file = BufferedInputFile(pdf_bytes, filename="cover_letter.pdf")
+
+    await callback.message.answer_document(
+        input_file,
+        caption="Сопроводительное письмо в PDF",
+    )
+
     await callback.answer()
 
 
