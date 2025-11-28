@@ -11,7 +11,11 @@ from sqlalchemy import select
 from app.db.session import get_session
 from app.db.models import User, Vacancy, UserVacancy, SearchFilter
 from app.db.crud import get_unsent_vacancies_for_user, mark_vacancies_as_sent
-from app.services.llm_service import generate_adapted_resume, generate_cover_letter
+from app.services.llm_service import (
+    generate_adapted_resume,
+    generate_cover_letter,
+    evaluate_vacancy_comfort,
+)
 from app.services.hh_service import fetch_vacancies_for_user
 from app.utils.pdf_utils import render_text_to_pdf
 
@@ -31,6 +35,12 @@ def vacancy_keyboard(vacancy_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="✉️ Сопроводительное",
                     callback_data=f"gen_cover:{vacancy_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💚 Оценка по комфорту",
+                    callback_data=f"rate:{vacancy_id}",
                 )
             ],
             [
@@ -190,6 +200,47 @@ async def cb_skip(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+
+
+@router.callback_query(F.data.startswith("rate:"))
+async def cb_rate(callback: CallbackQuery):
+    """
+    Оценка вакансии по "приятности" условий для работника через LLM.
+    Кнопки под исходной вакансией не трогаем.
+    """
+    vacancy_id = int(callback.data.split(":", 1)[1])
+
+    async for session in get_session():
+        # Находим пользователя
+        result = await session.execute(
+            select(User).where(User.telegram_id == callback.from_user.id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            await callback.message.answer("Сначала выполните /start")
+            await callback.answer()
+            return
+
+        vacancy = await session.get(Vacancy, vacancy_id)
+        if not vacancy:
+            await callback.message.answer("Не удалось найти вакансию в базе.")
+            await callback.answer()
+            return
+
+        try:
+            text = await evaluate_vacancy_comfort(user, vacancy)
+        except Exception as e:
+            await callback.message.answer(
+                f"Не удалось получить оценку вакансии от LLM: {e}"
+            )
+            await callback.answer()
+            return
+
+    # 👉 ВАЖНО: мы НЕ редактируем callback.message, а отправляем НОВОЕ сообщение
+    await callback.message.answer(f"💚 Оценка комфортности вакансии:\n\n{text}")
+
+    # Просто подтверждаем callback без изменения клавиатуры
+    await callback.answer()
 
 
 def register_vacancy_handlers(dp: Dispatcher) -> None:
