@@ -16,8 +16,14 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
-
     timeout-minutes: 10
+
+    env:
+      TG_BOT_API_KEY: "test-token"
+      DATABASE_URL: "postgresql+asyncpg://user:pass@localhost:5432/test_db"
+      LLM_API_BASE: "http://localhost"
+      LLM_API_KEY: "dummy-key"
+      LLM_MODEL: "dummy-model"
 
     steps:
       - name: Checkout repository
