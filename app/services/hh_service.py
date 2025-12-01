@@ -35,19 +35,23 @@ def _normalize_city_name(city: str | None) -> str | None:
 def _build_hh_params(user: User, filt: SearchFilter) -> dict[str, Any]:
     params: dict[str, Any] = {}
 
-    # Текст поиска: берём из фильтра, если есть, иначе из профиля
-    text = (filt.position or user.desired_position or "").strip()
-    if text:
-        params["text"] = text
+    # 👉 Приоритет: позиция из фильтра, потом из профиля
+    search_text = (filt.position or "").strip()
+    if not search_text:
+        search_text = (user.desired_position or "").strip()
 
-    # Город -> area_id
+    if search_text:
+        params["text"] = search_text
+        # 🔍 ВАЖНО: ищем только в названии вакансии, а не везде
+        params["search_field"] = "name"
+
+    # дальше всё как у тебя: area, salary, date_from и т.д.
     city_norm = _normalize_city_name(filt.city or user.city)
     if city_norm:
         area_id = CITY_TO_AREA_ID.get(city_norm)
         if area_id is not None:
             params["area"] = area_id
         else:
-            # Если город не знаем — не ставим area, пусть ищет по всей РФ
             logger.info("Unknown city for HH area mapping: %r", city_norm)
 
     # Минимальная зарплата
